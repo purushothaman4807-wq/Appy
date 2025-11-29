@@ -22,7 +22,7 @@ menu = st.sidebar.radio("Navigation", [
 
 # -------------------- FRED API --------------------
 # Load API key securely from Streamlit secrets
-FRED_API_KEY = st.secrets.get("fred_api_key", "YOUR_FRED_API_KEY_PLACEHOLDER")
+FRED_API_KEY = st.secrets.get("fred_api_key", " c6b870c5ac52e512ccc6c175d1e129ee ")
 
 def get_fred(series_id):
     """Fetches data from the FRED API using the specified series ID."""
