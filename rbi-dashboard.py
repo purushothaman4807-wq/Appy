@@ -249,7 +249,7 @@ if menu == "Liquidity Data (India + US)":
                 # Catch general parsing errors
                 st.error(f"Invalid CSV format or parsing error: {e}")
 
-# -------------------- PAGE 5: PDF --------------------
+# -------------------- PAGE 5: PDF (FIXED) --------------------
 if menu == "PDF Report":
     st.header("📄 Generate PDF Report")
     st.write("Click the button below to generate and download a simple report summarizing the dashboard.")
@@ -285,11 +285,12 @@ if menu == "PDF Report":
             else:
                 pdf.multi_cell(0, 8, txt="FRED API Connection: ACTIVE. Live US economic data is being fetched.")
             
-            pdf_output = BytesIO()
-            pdf.output(pdf_output)
+            # FIX: Use dest='S' to get the raw bytes string, which resolves the 'BytesIO' error.
+            pdf_data = pdf.output(dest='S')
+            
             st.download_button(
                 label="Download PDF", 
-                data=pdf_output.getvalue(), 
+                data=pdf_data,  # Pass the raw bytes string
                 file_name="rbi_macro_report.pdf",
                 mime="application/pdf"
             )
