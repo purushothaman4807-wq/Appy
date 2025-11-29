@@ -27,10 +27,10 @@ FRED_API_KEY = st.secrets.get("fred_api_key")
 def get_fred(series_id):
     """Fetches data from the FRED API using the specified series ID."""
     
-    # Check for placeholder key and provide a warning instead of making a bad request
-    if FRED_API_KEY == "YOUR_FRED_API_KEY_PLACEHOLDER":
-        st.warning(f"⚠️ FRED API Key Required: Cannot fetch live data for {series_id}. Please set your FRED API key as `fred_api_key` in Streamlit secrets.")
-        return pd.DataFrame(columns=["date","value"])
+    # FIX: Check if the API key is missing (None) or a placeholder string.
+    if not FRED_API_KEY or FRED_API_KEY == "YOUR_FRED_API_KEY_PLACEHOLDER":
+        st.error(f"⚠️ FRED API Key Required: Cannot fetch live data for {series_id}. Please set your FRED API key as `fred_api_key` in Streamlit secrets.")
+        return pd.DataFrame(columns=["date", "value"])
 
     url = "https://api.stlouisfed.org/fred/series/observations"
     params = {
@@ -54,11 +54,11 @@ def get_fred(series_id):
     except requests.exceptions.RequestException as e:
         # Catch network errors, connection problems, or the specific 400 error
         st.error(f"Error fetching {series_id}: Request Failed. Check API key validity or network. Details: {e}")
-        return pd.DataFrame(columns=["date","value"])
+        return pd.DataFrame(columns=["date", "value"])
     except Exception as e:
         # Catch unexpected errors like JSON parsing failure
         st.error(f"Error fetching {series_id}: Unexpected error ({e})")
-        return pd.DataFrame(columns=["date","value"])
+        return pd.DataFrame(columns=["date", "value"])
 
 # -------------------- India CPI --------------------
 def india_cpi():
@@ -75,7 +75,7 @@ def india_cpi():
         # Check if data is not empty or None
         if not data:
              st.warning("World Bank API returned no data for India CPI.")
-             return pd.DataFrame(columns=["date","value"])
+             return pd.DataFrame(columns=["date", "value"])
 
         df = pd.DataFrame(data)
         df = df.rename(columns={'date': 'date_str', 'value': 'value'})
@@ -87,7 +87,7 @@ def india_cpi():
         return df[['date', 'value']]
     except Exception as e:
         st.error(f"Error fetching India CPI: {e}")
-        return pd.DataFrame(columns=["date","value"])
+        return pd.DataFrame(columns=["date", "value"])
 
 # -------------------- PAGE 1: INFLATION --------------------
 if menu == "Inflation (India + US)":
@@ -163,11 +163,11 @@ if menu == "Riskometer":
     
     st.subheader("Interpretation")
     if risk_score < 30:
-        st.success(f"Score: {risk_score:.1f} → LOW RISK. Stable portfolio, aiming for capital preservation.")
+        st.success(f"Score: {risk_score:.1f} → **LOW RISK**. Stable portfolio, aiming for capital preservation.")
     elif risk_score < 60:
-        st.warning(f"Score: {risk_score:.1f} → MODERATE RISK. Balanced portfolio, suitable for moderate growth and stability.")
+        st.warning(f"Score: {risk_score:.1f} → **MODERATE RISK**. Balanced portfolio, suitable for moderate growth and stability.")
     else:
-        st.error(f"Score: {risk_score:.1f} → HIGH RISK. Risky portfolio, sensitive to market volatility, but with higher potential returns.")
+        st.error(f"Score: {risk_score:.1f} → **HIGH RISK**. Risky portfolio, sensitive to market volatility, but with higher potential returns.")
 
 # -------------------- PAGE 3: MONETARY POLICY IMPACT --------------------
 if menu == "Monetary Policy Impact":
@@ -244,8 +244,6 @@ if menu == "PDF Report":
     st.header("📄 Generate PDF Report")
     st.write("Click the button below to generate and download a simple report summarizing the dashboard.")
     
-    # fpdf import moved to the top of the script for cleaner structure
-    
     if st.button("Generate PDF Report"):
         try:
             pdf = fpdf.FPDF()
@@ -271,7 +269,8 @@ if menu == "PDF Report":
             pdf.cell(0, 10, txt="Data Source Status", ln=True, align="L")
             pdf.set_font("Arial", size=12)
             
-            if FRED_API_KEY == "YOUR_FRED_API_KEY_PLACEHOLDER":
+            # Improved check for PDF logic
+            if not FRED_API_KEY:
                 pdf.multi_cell(0, 8, txt="FRED API Connection: UNAVAILABLE. The API key is missing from Streamlit secrets, preventing the retrieval of live US CPI and Fed Balance Sheet data.")
             else:
                 pdf.multi_cell(0, 8, txt="FRED API Connection: ACTIVE. Live US economic data is being fetched.")
@@ -286,4 +285,3 @@ if menu == "PDF Report":
             )
         except Exception as e:
             st.error(f"Could not generate PDF. Ensure the 'fpdf' library is installed. Error: {e}")
-
