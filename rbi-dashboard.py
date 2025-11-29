@@ -166,25 +166,3 @@ if menu == "Liquidity Data (India + US)":
             except Exception as e:
                 st.error(f"CSV parsing error: {e}")
 
-# -------------------- PAGE 5: PDF --------------------
-if menu == "PDF Report":
-    st.header("📄 Generate PDF Report")
-    if st.button("Generate PDF Report"):
-        try:
-            pdf = fpdf.FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial","B",16)
-            pdf.cell(0,10,"RBI Macro Dashboard Report",ln=True,align="C")
-            pdf.ln(5)
-            pdf.set_font("Arial",size=12)
-            pdf.multi_cell(0,8,"This report provides key macroeconomic indicators (Inflation, Liquidity, Riskometer) for India & US.")
-            pdf.ln(5)
-            if not us_df.empty:
-                pdf.multi_cell(0,8,f"Latest US CPI: {us_df['value'].iloc[-1]:.2f}")
-            if not ind_df.empty:
-                pdf.multi_cell(0,8,f"Latest India CPI: {ind_df['value'].iloc[-1]:.2f}")
-            pdf_output = BytesIO()
-            pdf.output(pdf_output)
-            st.download_button("Download PDF", data=pdf_output.getvalue(), file_name="rbi_dashboard.pdf", mime="application/pdf")
-        except Exception as e:
-            st.error(f"PDF generation failed: {e}")
