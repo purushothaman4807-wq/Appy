@@ -5,7 +5,6 @@ import requests
 from datetime import datetime
 import fpdf
 from io import BytesIO
-import numpy as np 
 
 # PAGE CONFIG
 st.set_page_config(page_title="RBI Macro Dashboard", layout="wide", page_icon="🏦")
@@ -28,7 +27,7 @@ FRED_API_KEY = st.secrets.get("fred_api_key")
 def get_fred(series_id):
     """Fetches data from the FRED API using the specified series ID."""
     
-    # Check if the API key is missing (None) or a placeholder string.
+    # FIX: Check if the API key is missing (None) or a placeholder string.
     if not FRED_API_KEY or FRED_API_KEY == "YOUR_FRED_API_KEY_PLACEHOLDER":
         st.error(f"⚠️ FRED API Key Required: Cannot fetch live data for {series_id}. Please set your FRED API key as `fred_api_key` in Streamlit secrets.")
         return pd.DataFrame(columns=["date", "value"])
@@ -61,7 +60,7 @@ def get_fred(series_id):
         st.error(f"Error fetching {series_id}: Unexpected error ({e})")
         return pd.DataFrame(columns=["date", "value"])
 
-# -------------------- India CPI (World Bank) --------------------
+# -------------------- India CPI --------------------
 def india_cpi():
     """Fetches India CPI data from the World Bank API."""
     try:
@@ -90,48 +89,6 @@ def india_cpi():
         st.error(f"Error fetching India CPI: {e}")
         return pd.DataFrame(columns=["date", "value"])
 
-# -------------------- India Liquidity (Web Scrape) --------------------
-def get_india_liquidity_web():
-    """Fetches Policy Repo Rate data from RBI WSS Table 5 via web scraping (Fragile)."""
-    # This URL points to the Weekly Statistical Supplement (WSS) for Ratios and Rates
-    url = "https://rbi.org.in/Scripts/W_Table.aspx?Id=877&CurCompID=63"
-    
-    try:
-        # Use pandas to read all tables on the page
-        tables = pd.read_html(url, header=0)
-        
-        # We target the most likely table containing the weekly rates
-        df = tables[0]
-
-        # Clean column names
-        df.columns = df.columns.astype(str)
-        
-        # Attempt to find the correct column names, prioritizing 'date' and 'Policy Repo Rate'
-        found_date_col = next((col for col in df.columns if 'date' in col.lower()), None)
-        found_repo_col = next((col for col in df.columns if 'policy repo rate' in col.lower()), None)
-
-        if not found_date_col or not found_repo_col:
-            st.warning("RBI web scrape failed: Could not find 'Date' or 'Policy Repo Rate' columns.")
-            return pd.DataFrame(columns=["date", "value"])
-        
-        # Select and rename columns
-        df = df[[found_date_col, found_repo_col]].copy()
-        df.columns = ['date', 'value']
-
-        # Clean and process data: convert date and handle rate ranges (e.g., '7.00/7.25')
-        df['date'] = pd.to_datetime(df['date'], errors='coerce')
-        df['value'] = df['value'].astype(str).str.split('/').str[0]
-        df['value'] = pd.to_numeric(df['value'], errors='coerce')
-
-        df = df.dropna(subset=['date', 'value'])
-        df = df.sort_values('date')
-
-        return df
-    except Exception as e:
-        st.error(f"Error fetching automated RBI data (Web Scraping Failed). Details: {e}")
-        return pd.DataFrame(columns=["date", "value"])
-
-
 # -------------------- PAGE 1: INFLATION --------------------
 if menu == "Inflation (India + US)":
     st.header("📌 Inflation Dashboard")
@@ -139,6 +96,7 @@ if menu == "Inflation (India + US)":
 
     with col1:
         st.subheader("🇺🇸 US CPI (Live FRED)")
+        # CPIAUCSL: Consumer Price Index for All Urban Consumers: All Items in U.S. City Average, Seasonally Adjusted
         us_df = get_fred("CPIAUCSL") 
         if not us_df.empty:
             st.line_chart(us_df.set_index("date"))
@@ -156,6 +114,7 @@ if menu == "Inflation (India + US)":
     inflation = st.number_input("Inflation Rate (%)", value=6.0)
     years = st.number_input("Years", value=5, min_value=1)
     
+    # Calculation with better precision handling
     future_price = initial * ((1 + inflation/100) ** years)
     st.success(f"Future Price after {years} years → ₹{future_price:.2f}")
 
@@ -174,6 +133,7 @@ if menu == "Riskometer":
         st.error(f"Allocation must sum to 100%. Current sum: {total}%")
         risk_score = 0
     else:
+        # Risk weights: Equity (0.7), Gold (0.2), Debt (0.1) - based on original code logic
         risk_score = eq*0.7 + gold*0.2 + debt*0.1
 
     fig = go.Figure(go.Indicator(
@@ -260,52 +220,24 @@ if menu == "Liquidity Data (India + US)":
             st.metric("Latest Fed Balance Sheet (Trillion $)", f"${latest_val:.2f}")
 
     with col4:
-        st.subheader("🇮🇳 India Liquidity Data Source")
-        
-        source_option = st.radio("Select Data Source", 
-                                 ["Automated RBI Policy Rate (No API Key)", "Upload CSV (LAF / Net Liquidity)"],
-                                 key='india_liquidity_source')
+        st.subheader("🇮🇳 India Liquidity — Upload CSV (LAF / Net Liquidity)")
+        file = st.file_uploader("Upload India Liquidity CSV", type=['csv'], help="Expected CSV columns: 'date' (YYYY-MM-DD format) and 'value' (Liquidity data)")
+        if file:
+            try:
+                df = pd.read_csv(file)
+                # Ensure the column names are compatible with common usage (lower case for simplicity)
+                df.columns = [col.lower() for col in df.columns]
+                
+                if 'date' in df.columns and 'value' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                    st.success("CSV Uploaded and Parsed Successfully!")
+                    st.line_chart(df.set_index("date"))
+                    st.metric("Latest India Liquidity Value", f"₹{df['value'].iloc[-1]:,.2f}")
+                else:
+                    st.error("CSV must contain 'date' and 'value' columns.")
 
-        ind_liq_df = pd.DataFrame(columns=["date", "value"])
-
-        if source_option == "Automated RBI Policy Rate (No API Key)":
-            # Fetches Policy Repo Rate as a key liquidity proxy
-            ind_liq_df = get_india_liquidity_web()
-            
-            if not ind_liq_df.empty:
-                st.success("RBI Policy Rate Data Fetched Successfully!")
-                st.line_chart(ind_liq_df.set_index("date"))
-                st.metric("Latest India Policy Repo Rate (%)", f"{ind_liq_df['value'].iloc[-1]:.2f}")
-            else:
-                st.warning("Automated fetch failed. Please try the CSV upload option or check the RBI website status.")
-
-
-        elif source_option == "Upload CSV (LAF / Net Liquidity)":
-            file = st.file_uploader("Upload India Liquidity CSV", type=['csv'], help="Expected CSV columns: 'date' (YYYY-MM-DD format) and 'value' (Liquidity data)")
-            
-            if file:
-                try:
-                    df = pd.read_csv(file)
-                    df.columns = [col.lower() for col in df.columns]
-                    
-                    if 'date' in df.columns and 'value' in df.columns:
-                        # Robust conversion: 
-                        df['date'] = pd.to_datetime(df['date'], errors='coerce')
-                        df['value'] = pd.to_numeric(df['value'], errors='coerce') 
-                        
-                        df = df.dropna(subset=['date', 'value'])
-
-                        if df.empty:
-                            st.error("CSV uploaded, but no valid date and value pairs were found after cleaning. Check for non-numeric values or invalid dates.")
-                        else:
-                            st.success("CSV Uploaded and Parsed Successfully!")
-                            st.line_chart(df.set_index("date"))
-                            st.metric("Latest India Liquidity Value", f"₹{df['value'].iloc[-1]:,.2f}")
-                    else:
-                        st.error("CSV must contain 'date' and 'value' columns.")
-
-                except Exception as e:
-                    st.error(f"Invalid CSV format or parsing error: {e}")
+            except Exception as e:
+                st.error(f"Invalid CSV format or parsing error: {e}")
 
 # -------------------- PAGE 5: PDF --------------------
 if menu == "PDF Report":
@@ -337,18 +269,17 @@ if menu == "PDF Report":
             pdf.cell(0, 10, txt="Data Source Status", ln=True, align="L")
             pdf.set_font("Arial", size=12)
             
-            # Check if the API key is missing (None)
+            # Improved check for PDF logic
             if not FRED_API_KEY:
                 pdf.multi_cell(0, 8, txt="FRED API Connection: UNAVAILABLE. The API key is missing from Streamlit secrets, preventing the retrieval of live US CPI and Fed Balance Sheet data.")
             else:
                 pdf.multi_cell(0, 8, txt="FRED API Connection: ACTIVE. Live US economic data is being fetched.")
             
-            # Use dest='S' to get the raw bytes string, which resolves the 'BytesIO' error.
-            pdf_data = pdf.output(dest='S')
-            
+            pdf_output = BytesIO()
+            pdf.output(pdf_output)
             st.download_button(
                 label="Download PDF", 
-                data=pdf_data,  # Pass the raw bytes string
+                data=pdf_output.getvalue(), 
                 file_name="rbi_macro_report.pdf",
                 mime="application/pdf"
             )
